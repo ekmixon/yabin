@@ -66,12 +66,11 @@ def getBytePatterns(filename, ignore_whitelist=False):
     seen = {}
     for match in re.findall(prolog_regex, hex):
         bit = match[0].replace('x', '')
-        if bit not in seen:
-            if ignore_whitelist or not whitelisted(bit):
-                # Only include high entropy patterns, ie) avoid 0000000 or
-                # 1111111 etc.
-                # if entropy(bit) > 0:
-                seen[bit] = entropy(bit)
+        if bit not in seen and (ignore_whitelist or not whitelisted(bit)):
+            # Only include high entropy patterns, ie) avoid 0000000 or
+            # 1111111 etc.
+            # if entropy(bit) > 0:
+            seen[bit] = entropy(bit)
 
     return seen
 
@@ -79,11 +78,10 @@ def getBytePatterns(filename, ignore_whitelist=False):
 def loadProlog():
     prolog_regex = '('
     with open('regex.txt') as file:
-        for l in file.readlines():
+        for l in file:
             line = l.strip()
-            if not line.startswith('#'):
-                if len(line) > 3:
-                    prolog_regex += line + '|'
+            if not line.startswith('#') and len(line) > 3:
+                prolog_regex += f'{line}|'
     prolog_regex += ')'
     prolog_regex = prolog_regex.replace('|)', ')')
     return prolog_regex
@@ -94,8 +92,7 @@ def loadProlog():
 def entropy(string):
     prob = [float(string.count(c)) / len(string)
             for c in dict.fromkeys(list(string))]
-    entropy = - sum([p * math.log(p) / math.log(2.0) for p in prob])
-    return entropy
+    return -sum(p * math.log(p) / math.log(2.0) for p in prob)
 
 
 def generateFuzzyHash(filename):
@@ -190,19 +187,17 @@ def generateYara(filename, singleFile, tight=True, max_lines=3000, min_patterns=
 def fuzzyHash(filename, tight=True):
     if os.path.isdir(filename):
         for f in os.listdir(filename):
-            generateFuzzyHash('./' + filename + '/' + f)
-    else:
-        if os.path.isfile(filename):
-            generateFuzzyHash(filename)
+            generateFuzzyHash(f'./{filename}/{f}')
+    elif os.path.isfile(filename):
+        generateFuzzyHash(filename)
 
 
 def yara(filename, tight=True):
     if os.path.isdir(filename):
         for f in os.listdir(filename):
-            generateYara('./' + filename + '/' + f, False, tight)
-    else:
-        if os.path.isfile(filename):
-            generateYara(filename, True, tight)
+            generateYara(f'./{filename}/{f}', False, tight)
+    elif os.path.isfile(filename):
+        generateYara(filename, True, tight)
 
 # Returns true if a pattern is whitelisted
 
@@ -210,9 +205,7 @@ def yara(filename, tight=True):
 def whitelisted(pattern):
     db.execute('SELECT * FROM whitelist WHERE pattern ="' + pattern + '"')
     result = db.fetchone()
-    if result == None:
-        return False
-    return True
+    return result is not None
 
 
 def addToWhitelist(folder):
@@ -224,28 +217,23 @@ def addToWhitelist(folder):
     if min_seen == 0:
         for f in os.listdir(folder):
             count = count + 1
-            print 'Processed ' + str(count) + ' file(s)'
-            print 'Processing ' + f
-            new_seen = getBytePatterns('./' + folder + '/' + f, True)
+            count = count + 1
+            count = count + 1
+            new_seen = getBytePatterns(f'./{folder}/{f}', True)
             for pattern in new_seen:
                 db.execute(
                     'insert or ignore into whitelist (pattern) values ("' + pattern + '")')
             conn.commit()
 
-    # Otherwise actually keep track of how many samples a pattern has been in
     else:
         seen = {}
         # Built a count of how often every pattern was seen
         for f in os.listdir(folder):
             count = count + 1
-            print 'Processed ' + str(count) + ' file(s)'
-            new_seen = getBytePatterns('./' + folder + '/' + f, True)
+            count = count + 1
+            new_seen = getBytePatterns(f'./{folder}/{f}', True)
             for pattern in new_seen:
-                if pattern not in seen:
-                    seen[pattern] = 1
-                else:
-                    seen[pattern] = seen[pattern] + 1
-
+                seen[pattern] = 1 if pattern not in seen else seen[pattern] + 1
         total = 0
         # Insert every pattern seen > x times into the whtelist
         for pattern, count in seen.iteritems():
@@ -314,11 +302,7 @@ def malwareSearch(filename):
 def findRelated(pattern):
     db.execute('SELECT md5 FROM malware WHERE pattern ="' + pattern + '"')
     rows = db.fetchall()
-    toReturn = []
-    for row in rows:
-        toReturn.append(row[0])
-
-    return toReturn
+    return [row[0] for row in rows]
 
 # This regex decides what patterns we will extract
 prolog_regex = loadProlog()
